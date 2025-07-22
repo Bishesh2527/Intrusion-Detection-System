@@ -132,6 +132,35 @@ class AlertSystem:
             if threat.get('confidence', 0.0) > 0.8:
                 self.logger.critical(f"High confidence threat detected: {alert_json}")
 
+class IntrusionDetectionSystem:
+    def __init__(self, interface="eth0"):
+        self.packet_capture = PacketCapture()
+        self.traffic_analyzer = TrafficAnalyzer()
+        self.detection_engine = DetectionEngine()
+        self.alert_system = AlertSystem()
+        self.interface = interface
+
+    def start(self):
+        print(f"Starting IDS on interface {self.interface}")
+        self.packet_capture.start_capture(self.interface)
+        try:
+            while True:
+                packet = self.packet_capture.packet_queue.get()
+                features = self.traffic_analyzer.analyze_packet(packet)
+                if features:
+                    threats = self.detection_engine.detect_threats(features)
+                    for threat in threats:
+                        pkt_info = {
+                            'source_ip': packet[IP].src,
+                            'destination_ip': packet[IP].dst,
+                            'source_port': packet[TCP].sport,
+                            'destination_port': packet[TCP].dport
+                        }
+                        self.alert_system.generate_alert(threat, pkt_info)
+        except KeyboardInterrupt:
+            print("Stopping IDS...")
+            self.packet_capture.stop()
+
 class Dashboard:
     def __init__(self):
         self.options = {
@@ -202,10 +231,12 @@ def main():
         elif choice == "3":
             alert_system = AlertSystem(to_console=True, to_file=True)
 
+        ids = IntrusionDetectionSystem(interface=selected_iface)
+        ids.alert_system = alert_system
 
         print("Starting IDS. Press Ctrl+C to stop.")
         try:
-            pass
+            ids.start()
         except KeyboardInterrupt:
             print("IDS stopped by user.")
 
