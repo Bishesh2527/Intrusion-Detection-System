@@ -76,31 +76,48 @@ class DetectionEngine:
         self.anomaly_detector.fit([[100, 10, 1000], [200, 20, 1500], [50, 5, 500]])
 
     def load_signature_rules(self):
+        # Add confidence for each rule for better alerting
         return {
             'syn_flood': {
-                'condition': lambda f: (f['tcp_flags'] == 2 and f['packet_rate'] > 100)
+                'condition': lambda f: (f['tcp_flags'] == 2 and f['packet_rate'] > 100),
+                'confidence': 0.9
             },
             'port_scan': {
-                'condition': lambda f: (f['packet_size'] < 100 and f['packet_rate'] > 50)
+                'condition': lambda f: (f['packet_size'] < 100 and f['packet_rate'] > 50),
+                'confidence': 0.7
             },
             'ddos': {
-                'condition': lambda f: (f['packet_rate'] > 1000)
+                'condition': lambda f: (f['packet_rate'] > 1000000),
+                'confidence': 1.0
             },
             'unsecure_download': {
-                'condition': lambda f: (f['packet_size'] > 1000000 and f['packet_rate'] > 10 and f['tcp_flags'] == 24)
+                'condition': lambda f: (f['packet_size'] > 1000000 and f['packet_rate'] > 10 and f['tcp_flags'] == 24),
+                'confidence': 0.8
             }
         }
 
     def detect_threats(self, features):
         threats = []
         for rname, r in self.signature_rules.items():
-            if r['condition'](features):
-                threats.append({'type': 'signature', 'rule': rname, 'confidence': 1.0})
+            try:
+                if r['condition'](features):
+                    threats.append({
+                        'type': 'signature',
+                        'rule': rname,
+                        'confidence': r.get('confidence', 1.0)
+                    })
+            except Exception as e:
+                # Optionally log or print rule evaluation errors
+                pass
 
         vec = np.array([[features['packet_size'], features['packet_rate'], features['byte_rate']]])
         score = self.anomaly_detector.score_samples(vec)[0]
-        if score < -0.5:
-            threats.append({'type': 'anomaly', 'score': score, 'confidence': min(1.0, abs(score))})
+        if score < -0.2:
+            threats.append({
+                'type': 'anomaly',
+                'score': score,
+                'confidence': min(1.0, abs(score))
+            })
 
         return threats
 
@@ -129,7 +146,7 @@ class AlertSystem:
             print(f"ALERT: {alert_json}")
         if self.to_file:
             self.logger.warning(alert_json)
-            if threat.get('confidence', 0.0) > 0.8:
+            if threat.get('confidence', 0.0) >= 0.8:
                 self.logger.critical(f"High confidence threat detected: {alert_json}")
 
 class IntrusionDetectionSystem:
